@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace lockTest
 {
@@ -11,37 +12,69 @@ namespace lockTest
             Console.WriteLine("start.....");
             Console.ReadKey();
 
-            await RunTest();
+            await RunAdvancedStressTest(800000);
             Console.ReadKey();
         }
 
 
 
-        public static async Task RunTest()
-        {
-            List<Task> tasks = new List<Task>();
 
-            for (int i = 0; i < 2000000; i++)
+        public static async Task RunAdvancedStressTest(int requestCount = 1000)
+        {
+            int accepted = 0;
+            int rejected = 0;
+
+            long fastest = long.MaxValue;
+            long slowest = 0;
+            long totalTime = 0;
+
+            List<Task> tasks = new List<Task>();
+            Stopwatch globalSw = Stopwatch.StartNew();
+
+            for (int i = 0; i < requestCount; i++)
             {
-                int id = i;
                 tasks.Add(Task.Run(async () =>
                 {
+                    Stopwatch sw = Stopwatch.StartNew();
+
                     bool enter = await cooldown.TryEnterAsync();
+
+                    sw.Stop();
+
+                    Interlocked.Add(ref totalTime, sw.ElapsedMilliseconds);
+
+                    if (sw.ElapsedMilliseconds < fastest)
+                        fastest = sw.ElapsedMilliseconds;
+
+                    if (sw.ElapsedMilliseconds > slowest)
+                        slowest = sw.ElapsedMilliseconds;
 
                     if (enter)
                     {
-                        Console.WriteLine($"[OK] Request {id} Accept.");
-                        await Task.Delay(500); // عملیات سنگین فرضی
+                        Interlocked.Increment(ref accepted);
+                        await Task.Delay(200); // عملیات سنگین فرضی
                     }
-                    //else
-                    //{
-                    //    Console.WriteLine($"[X] Request {id} Reject.");
-                    //}
+                    else
+                    {
+                        Interlocked.Increment(ref rejected);
+                    }
                 }));
             }
 
             await Task.WhenAll(tasks);
+
+            globalSw.Stop();
+
+            Console.WriteLine("=============== Advanced Stress Test ===============");
+            Console.WriteLine($"Total Requests:          {requestCount}");
+            Console.WriteLine($"Total Time:              {globalSw.ElapsedMilliseconds} ms");
+            Console.WriteLine($"Accepted:                {accepted}");
+            Console.WriteLine($"Rejected:                {rejected}");
+            Console.WriteLine($"Avg Response Time:       {totalTime / requestCount} ms");
+            Console.WriteLine($"Fastest Response:        {fastest} ms");
+            Console.WriteLine($"Slowest Response:        {slowest} ms");
+            Console.WriteLine("====================================================");
         }
     }
-
 }
+
